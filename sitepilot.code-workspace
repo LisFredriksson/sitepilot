@@ -1,0 +1,12 @@
+{
+  "folders": [
+    {
+      "name": "SitePilot",
+      "path": "."
+    },
+    {
+      "name": "WordPress – SitePilot Test",
+      "path": "../../../Local Sites/sitepilot-test/app/public"
+    }
+  ]
+}

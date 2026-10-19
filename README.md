@@ -1,3 +1,51 @@
+# SitePilot
+
+## Läsning av Gutenberg-paragrafer
+
+Välj en sida och hämta dess titel. Under titelverktyget hämtas och visas nu
+sidans `core/paragraph`-block och `<p>`-stycken i blockens egen HTML som vanlig,
+skrivskyddad text, även inuti grupper och kolumner. Tomma stycken visas som
+`(Tomt stycke)`. Visningen skiljer mellan `Paragrafblock` och `HTML-stycke`.
+
+- `src/lib/wordpress.ts`: autentiserad hämtning av `content.raw` med `context=edit`.
+- `src/lib/gutenberg.ts`: blockmodell, SHA-256 av exakt original, parsning och textutvinning.
+- `src/app/api/wordpress/page/content/route.ts`: lokal GET-endpoint; returnerar endast sid-ID, hash och paragraftexter med blocksökvägar.
+- `src/components/wordpress_paragraphs.tsx`: textvisning, fel och avbrutna anrop vid sidbyte.
+
+Originalets HTML och alla parsade blocktyper behålls i serverns läsmodell.
+Modellen är inte avsedd att serialiseras tillbaka för sparande. En blocksökväg
+gäller bara för originalversionen med samma hash och är inget permanent ID.
+`inner_content` behåller HTML-fragmentens ordning med null-markörer för underblock.
+HTML-stycken identifieras av ägarblockets sökväg och ett nollbaserat
+`html_paragraph_index`, tillsammans med innehållshashen. Det är en läsreferens,
+inte en instruktion att skriva till WordPress. HTML-stycken som korsar en
+underblocksgräns avvisas eftersom deras referens inte är entydig.
+Refererade mönster och temamallars innehåll följs inte. HTML visas aldrig direkt.
+Läsningen har gränser på 512 KiB originalinnehåll, 2 000 block och 30 blocknivåer.
+WordPress JSON-svaret begränsas till 4 MiB före tolkning.
+
+Kör `npm test` med Node.js 24 för parserns tester (inga nätverksanrop).
+`npm run lint` och `npx tsc --noEmit` kontrollerar övrig kod.
+Prova i webbläsaren med flera stycken, ett tomt stycke, rubriker, länkar,
+fetstil och ett stycke inuti en grupp. Byt sedan sida under hämtningen:
+föregående sidas innehåll ska försvinna. Funktionen gör inga innehållsuppdateringar
+och använder inte AI.
+
+## Mockat ändringsförslag för brödtext
+
+Under textstyckena finns ett separat instruktionsfält och `Skapa testförslag för
+brödtext`. Mocken tolkar inte instruktionen utan använder ett fast exempel för
+första icke-tomma stycket. Den visar original och förslag utan någon sparknapp.
+Förslaget innehåller sid-ID, originalets hash och målstyckets fullständiga
+läsreferens, inklusive källtyp och HTML-styckeindex när det behövs.
+
+`src/lib/text_proposal.ts` skapar mockförslaget utan nätverksanrop eller mutation
+av originalet. `src/components/wordpress_text_proposal.tsx` visar det. Ändrad
+instruktion rensar förhandsvisningen; sidbyte eller ny hämtning rensar utkastet.
+Ingen AI-modell anropas och inget brödtextinnehåll sparas.
+
+## Next.js-startprojekt
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
