@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parse_page_content, extract_paragraphs, MAX_CONTENT_BYTES } from "./gutenberg.ts";
+import { parse_page_content, extract_paragraphs, MAX_CONTENT_BYTES } from "../src/lib/gutenberg.ts";
 
 const paragraph = (html: string) => `<!-- wp:paragraph --><p>${html}</p><!-- /wp:paragraph -->`;
 

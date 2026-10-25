@@ -24,6 +24,7 @@ Refererade mönster och temamallars innehåll följs inte. HTML visas aldrig dir
 Läsningen har gränser på 512 KiB originalinnehåll, 2 000 block och 30 blocknivåer.
 WordPress JSON-svaret begränsas till 4 MiB före tolkning.
 
+Testfilerna ligger samlade i `tests/`, med filnamn som visar vilken modul de testar.
 Kör `npm test` med Node.js 24 för parserns tester (inga nätverksanrop).
 `npm run lint` och `npx tsc --noEmit` kontrollerar övrig kod.
 Prova i webbläsaren med flera stycken, ett tomt stycke, rubriker, länkar,
@@ -31,20 +32,68 @@ fetstil och ett stycke inuti en grupp. Byt sedan sida under hämtningen:
 föregående sidas innehåll ska försvinna. Funktionen gör inga innehållsuppdateringar
 och använder inte AI.
 
-## Mockat ändringsförslag för brödtext
+## AI-förslag för brödtext
 
-Under textstyckena finns ett separat instruktionsfält och `Skapa testförslag för
-brödtext`. Mocken tolkar inte instruktionen utan använder ett fast exempel för
-första icke-tomma stycket. Den visar original och förslag utan någon sparknapp.
+Under textstyckena finns ett separat instruktionsfält och `Föreslå brödtext med AI`.
+Knappen anropar `/api/ai/text` och kan medföra en OpenAI-kostnad. Gränssnittet
+visar original och förslag, eller en följdfråga. För paragrafblock finns
+`Godkänn och spara`; HTML-stycken kan bara förhandsvisas.
 Förslaget innehåller sid-ID, originalets hash och målstyckets fullständiga
 läsreferens, inklusive källtyp och HTML-styckeindex när det behövs.
 
-`src/lib/text_proposal.ts` skapar mockförslaget utan nätverksanrop eller mutation
-av originalet. `src/components/wordpress_text_proposal.tsx` visar det. Ändrad
-instruktion rensar förhandsvisningen; sidbyte eller ny hämtning rensar utkastet.
-Ingen AI-modell anropas och inget brödtextinnehåll sparas.
+`src/lib/text_proposal.ts` validerar att svaret gäller rätt sida, innehållsversion
+och originalstycke. `src/components/wordpress_text_proposal.tsx` anropar endpointen
+och visar svaret. Ändrad instruktion rensar förslaget; följdfrågan behålls medan
+användaren skriver en fullständig, förtydligad instruktion. Ingen chatthistorik skickas.
+Sidbyte eller ny innehållsversion rensar utkastet och avbryter pågående anrop.
+Vid innehållskonflikt måste sidan hämtas igen innan ett nytt försök.
+Endast uttryckligt godkännande anropar WordPress-endpointen för sparande.
+Efter bekräftat sparande hämtas innehållet igen. Alla misslyckade sparförsök
+spärrar fortsatta försök tills användaren hämtat aktuellt innehåll.
+
+## AI-endpoint för brödtext
+
+`POST /api/ai/text` tar emot `page_id`, `content_hash` och `instruction`.
+Den hämtar originalet med den anslutna WordPress-användarens behörighet och
+avvisar ändrad hash före AI-anropet. Högst 100 icke-tomma textstycken och
+32 KiB JSON-kandidatdata tillåts; större sidor avvisas utan trunkering.
+Request-body begränsas till 16 KiB och instruktionen till 1 000 tecken.
+
+`suggest_text_change()` i `src/lib/ai.ts` använder Responses API med strikt
+JSON-schema, utan verktyg eller automatiska återförsök. Modellen väljer ett
+kandidat-ID eller ställer en följdfråga. Servern validerar svaret och hämtar
+blockreferensen ur originalet. Förslag är högst 5 000 tecken, följdfrågor 500.
+Modellen ser vanlig stycketext, inte HTML, rubriker eller sidlayout.
+
+Endpointen har ingen skrivfunktion.
+Tester i `tests/ai_text_route.test.mts` ersätter WordPress- och AI-anrop med
+simulerade svar; `npm test` medför inga externa anrop eller kostnader.
+`tests/text_proposal_ui.test.mts` testar komponentens anrop, följdfrågor,
+konflikter och avbrutna anrop med simulerade React-hooks och fetch.
+De testerna kontrollerar inte webbläsarens layout eller DOM.
 
 ## Next.js-startprojekt
+
+### Förberedd endpoint för paragrafgodkännande
+
+`POST /api/wordpress/page/paragraph` tar emot `page_id`, `content_hash`,
+`target`, `proposed_text` och `approved: true`. Den är enbart tillgänglig i
+utvecklingsläge med projektets lokala Host/Origin-kontroller. Dessa ersätter
+inte autentisering vid en framtida publik driftsättning.
+
+Servern hämtar originalet med `context=edit`, kontrollerar hash och målstycke,
+bygger ett begränsat textbyte och skickar innehållet till WordPress. Endast
+entydiga `core/paragraph` med vanlig text stöds. AI anropas inte vid sparande.
+Flaggan `approved` är klientens uttryckliga begäran, inte ett serverlagrat
+bevis på att ett visst AI-förslag har godkänts.
+
+Ändrat original ger `409 CONTENT_CHANGED`. Osäker skrivning ger
+`502 SAVE_UNCONFIRMED` utan automatiskt återförsök. Gränssnittet kräver
+omläsning efter osäkert sparande och spärrar dubbelklick medan anropet pågår.
+Hashkontrollen är inte en atomisk WordPress-låsning: samtidig redigering
+mellan läsning och skrivning kan fortfarande inträffa.
+
+`tests/paragraph_route.test.mts` testar med simulerad WordPress-koppling.
 
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 

@@ -1,4 +1,5 @@
 import "server-only";
+import { MAX_CONTENT_BYTES } from "./gutenberg";
 
 export async function get_wordpress_page(page_id = Number(process.env.WORDPRESS_PAGE_ID)) {
   return request_wordpress_page(page_id);
@@ -11,6 +12,29 @@ export async function get_wordpress_page_content(page_id: number) {
   const response = await request_wordpress(`pages/${page_id}`, {
     context: "edit", _fields: "id,content.raw",
   });
+  return read_wordpress_content(response, page_id);
+}
+
+// Anroparen ansvarar för godkännande och konfliktkontroll före skrivningen.
+export async function update_wordpress_content(page_id: number, content_raw: string) {
+  if (!Number.isSafeInteger(page_id) || page_id < 1) {
+    throw new Error("Ogiltigt sid-ID.");
+  }
+  if (typeof content_raw !== "string" || Buffer.byteLength(content_raw, "utf8") > MAX_CONTENT_BYTES) {
+    throw new Error("Sidinnehållet är ogiltigt eller för stort.");
+  }
+  const response = await request_wordpress(`pages/${page_id}`, {
+    context: "edit", _fields: "id,content.raw",
+  }, { content: content_raw });
+  const saved = await read_wordpress_content(response, page_id);
+  // WordPress kan filtrera innehållet. Då ska vi inte bekräfta exakt sparande.
+  if (saved.content_raw !== content_raw) {
+    throw new Error("WordPress returnerade ändrat innehåll efter sparandet. Hämta sidan igen.");
+  }
+  return saved;
+}
+
+async function read_wordpress_content(response: Response, page_id: number) {
 
   // Begränsa även svaret före JSON-tolkningen. JSON kan vara större än råtexten.
   const reader = response.body?.getReader();
@@ -54,7 +78,11 @@ export async function update_wordpress_title(
   return request_wordpress_page(page_id, new_title.trim());
 }
 
-async function request_wordpress(endpoint: string, parameters: Record<string, string>, new_title?: string) {
+async function request_wordpress(
+  endpoint: string,
+  parameters: Record<string, string>,
+  update?: { title: string } | { content: string },
+) {
   const base_url = process.env.WORDPRESS_BASE_URL;
   const username = process.env.WORDPRESS_USERNAME;
   const application_password = process.env.WORDPRESS_APPLICATION_PASSWORD;
@@ -81,12 +109,12 @@ async function request_wordpress(endpoint: string, parameters: Record<string, st
   ).toString("base64");
 
   const response = await fetch(page_url, {
-    method: new_title === undefined ? "GET" : "POST",
+    method: update === undefined ? "GET" : "POST",
     headers: {
       Authorization: `Basic ${credentials}`,
       "Content-Type": "application/json",
     },
-    body: new_title === undefined ? undefined : JSON.stringify({ title: new_title }),
+    body: update === undefined ? undefined : JSON.stringify(update),
     cache: "no-store",
     redirect: "error",
     signal: AbortSignal.timeout(10000),
@@ -103,7 +131,8 @@ async function request_wordpress_page(page_id: number, new_title?: string) {
     throw new Error("Sid-ID måste vara ett positivt heltal.");
   }
   const response = await request_wordpress(
-    `pages/${page_id}`, { context: "edit", _fields: "id,title" }, new_title,
+    `pages/${page_id}`, { context: "edit", _fields: "id,title" },
+    new_title === undefined ? undefined : { title: new_title },
   );
 
   // TypeScript kontrollerar vår kod; detta kontrollerar API-svaret vid körning.

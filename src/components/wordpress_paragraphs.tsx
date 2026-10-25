@@ -13,6 +13,15 @@ type ContentPreview = {
 export default function WordPressParagraphs({ page_id }: { page_id: number }) {
   const [content, set_content] = useState<ContentPreview | null>(null);
   const [error_message, set_error_message] = useState<string | null>(null);
+  const [load_version, set_load_version] = useState(0);
+  const [saved_message, set_saved_message] = useState<string | null>(null);
+
+  function reload_content(saved = false) {
+    set_content(null);
+    set_error_message(null);
+    set_saved_message(saved ? "Stycket sparades i WordPress. Läser aktuellt innehåll…" : null);
+    set_load_version(version => version + 1);
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -65,13 +74,14 @@ export default function WordPressParagraphs({ page_id }: { page_id: number }) {
       active = false;
       controller.abort();
     };
-  }, [page_id]);
+  }, [page_id, load_version]);
 
   return (
     <section className="mt-8 border-t border-slate-200 pt-6" aria-labelledby="paragraphs_heading">
       <h3 id="paragraphs_heading" className="text-lg font-semibold">Sidans textstycken</h3>
       <p className="mt-2 text-sm text-slate-600">Här visas paragrafblock och textstycken i blockens HTML. Texten är skrivskyddad.</p>
       <div aria-live="polite" className="mt-4">
+        {saved_message && <p className="mb-3 text-green-700">{content ? "Stycket sparades i WordPress. Aktuellt innehåll visas nedan." : saved_message}</p>}
         {!content && !error_message && <p>Läser textstycken…</p>}
         {error_message && <p role="alert" className="text-red-700">{error_message}</p>}
         {content?.paragraphs.length === 0 && (
@@ -89,7 +99,8 @@ export default function WordPressParagraphs({ page_id }: { page_id: number }) {
         )}
       </div>
       {content && content.page_id === page_id && (
-        <WordPressTextProposal key={`${content.page_id}:${content.content_hash}`} content={content} />
+        <WordPressTextProposal key={`${content.page_id}:${content.content_hash}`} content={content}
+          on_reload={() => reload_content()} on_saved={() => reload_content(true)} />
       )}
     </section>
   );
